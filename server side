@@ -1,0 +1,39 @@
+import socket
+
+SERVER_IP = "127.0.0.1"  # Usa l'IP del server se non è sulla stessa macchina
+SERVER_PORT = 87  # Porta di ascolto per il server
+
+# Funzione per avviare il server e inviare comandi al client
+def start_server():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((SERVER_IP, SERVER_PORT))
+    server_socket.listen(1)
+    print(f"[SERVER] In ascolto sulla porta {SERVER_PORT}...")
+
+    while True:
+        try:
+            client_socket, client_address = server_socket.accept()
+            print(f"[SERVER] Connessione stabilita con {client_address}")
+
+            while True:
+                comando = input("[SERVER] Inserisci il comando da inviare al client (blocca/sblocca): ").strip().lower()
+                if comando in ["blocca", "sblocca"]:
+                    client_socket.send(comando.encode())  # Invia il comando al client
+                    print(f"[SERVER] Comando '{comando}' inviato al client.")
+                else:
+                    print("[SERVER] Comando non valido. Usa 'blocca' o 'sblocca'.")
+
+                # Aspetta un po' prima di inviare un altro comando
+                continue_command = input("[SERVER] Vuoi inviare un altro comando? (sì/no): ").strip().lower()
+                if continue_command != "sì":
+                    break
+
+            client_socket.close()  # Chiude la connessione con il client
+        except Exception as e:
+            print(f"[SERVER] Errore: {e}")
+            break
+
+    server_socket.close()
+
+if __name__ == "__main__":
+    start_server()
